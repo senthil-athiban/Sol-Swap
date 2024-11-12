@@ -1,41 +1,47 @@
 "use client";
 import React from "react";
-import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
-import bs58 from "bs58";
-import axios from "axios";
-import { Wallet } from "@project-serum/anchor";
+import { Connection, VersionedTransaction } from "@solana/web3.js";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 const connection = new Connection("https://api.devnet.solana.com");
 
-const wallet = new Wallet(
-    Keypair.fromSecretKey(bs58.decode(process.env.PRIVATE_KEY || ""))
-  );
 
 const Card = () => {
   
-
+    const { publicKey, sendTransaction } = useWallet();
+    console.log(' publicKey : ', publicKey);
   const handleSwap = async () => {
-    const quoteResponse = await axios(
+    if(!publicKey) return;
+    
+    const quote = await fetch(
       "https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=100000000&slippageBps=50"
     );
-    console.log(" quote response : ", quoteResponse);
-    console.log({ quoteResponse });
 
+    const quoteResponse = await quote.json();
+    
     // get serialized transactions for the swap
-    const { data: { swapTransaction } } = await (
-        await axios.post('https://quote-api.jup.ag/v6/swap', {
+    const res = await fetch('https://quote-api.jup.ag/v6/swap', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
             quoteResponse,
-            userPublicKey: wallet.publicKey.toString(),
+            userPublicKey: publicKey.toString(),
+            wrapAndUnwrapSol: true,
+          })
         })
-    );
+
+    const response = await res.json();
+    const swapTransaction = response.swapTransaction;
+    console.log(' swap : ', swapTransaction);
 
     // deserialize the transaction
     const swapTransactionBuf = Buffer.from(swapTransaction, "base64");
     const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
     console.log(transaction);
 
-    // sign the transaction
-    transaction.sign([wallet.payer]);
+    await sendTransaction(transaction, connection);
 
     // get the latest block hash
     const latestBlockHash = await connection.getLatestBlockhash();
