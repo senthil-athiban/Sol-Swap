@@ -1,9 +1,13 @@
 "use client";
 import { ChevronDown, Settings, Settings2 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import TokenModal from "./TokenModal";
 import { Token } from "@/types/tokens";
 import SlippageModal from "./SlippageModal";
+import { toast } from "sonner";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { fetchQuote, fetchTokenInfo, getAccountBalance } from "@/utils/tokenHelpers";
+
 
 const SwapCard = () => {
   const [showTokenModal, setShowTokenModal] = useState(false);
@@ -11,9 +15,14 @@ const SwapCard = () => {
   const [tokens, setTokens] = useState([]);
   const [filteredTokens, setFilteredTokens] = useState([]);
   const [inputAmount, setInputAmount] = useState("0");
+  const [inputToken, setInputToken] = useState<Token | null>(null);
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [slippage, setSlippage] = useState("50");
-  console.log(' tokens : ', tokens);
+  const [outputAmount, setOutputAmount] = useState("");
+  
+  const {connection} = useConnection();
+  const {publicKey} = useWallet();
+
   const getTokens = async () => {
     const res = await fetch("https://tokens.jup.ag/tokens?tags=verified");
     const body = await res.json();
@@ -33,28 +42,57 @@ const SwapCard = () => {
     setFilteredTokens(filtered);
   };
 
-  const calculateExchangeAmount = async (amount: string) => {
-    const quote = await fetch(
-      `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=${parseInt(amount, 10) * 1000000000}&slippageBps=${slippage}`
-    );
-
-    const response = await quote.json();
-    console.log(' response : ', response);
-    const outamount = parseInt(response.outAmount) / 1e6;
-    alert(outamount + "USDC");
+  const calculateExchangeAmount = useCallback( async (amount: string) => {
     
+    if(!selectedToken || !inputToken) {
+      toast.error('Swap token is not selected');
+      return;
+    }
 
+    if(parseInt(amount, 10) <= 0 || !amount) {
+      setOutputAmount("");
+      return;
+    }
+    try {
+      const {outamount,
+        minimumRequired,
+        fee,
+        routes,
+        priceImpactPct} = await fetchQuote(inputToken, selectedToken, amount, slippage);
 
-  }
+      setOutputAmount(outamount.toString());
+    } catch (error) {
+      console.log(" Error in calculating amount", error);
+      toast.error('Error in calculating the amount');
+    }
+  }, [inputToken, selectedToken, slippage]);
+
+  const fetchAndSetAccountBalance = useCallback(async() => {
+    try {
+      if (publicKey) {
+        const tokenInfo = await fetchTokenInfo();
+        setInputToken(tokenInfo);
+        if (tokenInfo) {
+          await getAccountBalance(publicKey, connection, tokenInfo);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching account balance:', error);
+    }
+  },[connection, publicKey])
+
   useEffect(() => {
     getTokens();
   }, []);
 
   useEffect(() => {
-    if(inputAmount){
+    if (inputAmount) {
       calculateExchangeAmount(inputAmount);
+      fetchAndSetAccountBalance();
     }
-  },[inputAmount])
+  }, [inputAmount]);
+
+  console.log(" selected token : ", selectedToken);
 
   return (
     <div className="w-full max-w-md p-6 bg-blue-900 rounded-3xl flex flex-col shadow-lg">
@@ -128,14 +166,14 @@ const SwapCard = () => {
           >
             <img
               src={
-                "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
+                selectedToken?.logoURI ?? "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
               }
               width={24}
               height={24}
               alt="logo"
               className="rounded-full"
             />
-            <h2 className="text-sm font-semibold">USDC</h2>
+            <h2 className="text-sm font-semibold">{selectedToken?.symbol ?? "USDC"}</h2>
             <ChevronDown />
           </div>
           <div className="flex justify-end">
@@ -143,6 +181,8 @@ const SwapCard = () => {
               type="text"
               placeholder="Enter amount"
               className="bg-transparent text-white w-full max-w-md outline-none"
+              value={outputAmount}
+              onChange={() => {}}
             />
           </div>
         </div>

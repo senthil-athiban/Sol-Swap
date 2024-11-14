@@ -20,7 +20,7 @@ const TokenModal: React.FC<TokenModalProps> = ({
 }) => {
   
   if (!isOpen) return null;
-
+  
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50 w-full backdrop-blur-sm">
       <div className="bg-gray-800 rounded-lg w-full max-w-md p-6 text-white shadow-lg">
@@ -66,7 +66,7 @@ const TokenModal: React.FC<TokenModalProps> = ({
               <button
                 key={token.address}
                 className="bg-gray-700 text-gray-300 p-2 rounded-lg hover:bg-gray-600 flex items-center"
-                onClick={() => setSelectedToken(token)}
+                onClick={() => {setSelectedToken(token); onClose()}}
               >
                 <img
                   src={token.logoURI}
@@ -92,7 +92,7 @@ const TokenModal: React.FC<TokenModalProps> = ({
             <div
               key={token.address}
               className="flex items-center justify-between py-4 hover:bg-gray-700 px-2 rounded-lg cursor-pointer border-b border-gray-700"
-              onClick={() => setSelectedToken(token)}
+              onClick={() => {setSelectedToken(token); onClose()}}
             >
               <div className="flex items-center space-x-4">
                 <img
