@@ -1,13 +1,18 @@
 "use client";
-import { ChevronDown, Settings, Settings2 } from "lucide-react";
-import React, { useCallback, useEffect, useState } from "react";
-import TokenModal from "./TokenModal";
-import { Token } from "@/types/tokens";
-import SlippageModal from "./SlippageModal";
-import { toast } from "sonner";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { fetchQuote, fetchTokenInfo, getAccountBalance } from "@/utils/tokenHelpers";
 
+import React, { useCallback, useEffect, useState } from "react";
+import { ChevronDown, Settings2 } from "lucide-react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { toast } from "sonner";
+import { Token } from "@/types/tokens";
+import {
+  fetchQuote,
+  fetchTokenInfo,
+  getAccountBalance,
+  swapTransaction,
+} from "@/utils/tokenHelpers";
+import TokenModal from "@/components/TokenModal";
+import SlippageModal from "@/components/SlippageModal";
 
 const SwapCard = () => {
   const [showTokenModal, setShowTokenModal] = useState(false);
@@ -19,9 +24,10 @@ const SwapCard = () => {
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [slippage, setSlippage] = useState("50");
   const [outputAmount, setOutputAmount] = useState("");
-  
-  const {connection} = useConnection();
-  const {publicKey} = useWallet();
+
+  const { connection } = useConnection();
+
+  const wallet = useWallet();
 
   const getTokens = async () => {
     const res = await fetch("https://tokens.jup.ag/tokens?tags=verified");
@@ -42,44 +48,57 @@ const SwapCard = () => {
     setFilteredTokens(filtered);
   };
 
-  const calculateExchangeAmount = useCallback( async (amount: string) => {
-    
-    if(!selectedToken || !inputToken) {
-      toast.error('Swap token is not selected');
-      return;
-    }
+  const calculateExchangeAmount = useCallback(
+    async (amount: string) => {
+      if (!selectedToken || !inputToken) {
+        toast.error("Swap token is not selected");
+        return;
+      }
 
-    if(parseInt(amount, 10) <= 0 || !amount) {
-      setOutputAmount("");
-      return;
-    }
+      if (parseInt(amount, 10) <= 0 || !amount) {
+        setOutputAmount("");
+        return;
+      }
+      try {
+        const { outamount, minimumRequired, fee, routes, priceImpactPct } =
+          await fetchQuote(inputToken, selectedToken, amount, slippage);
+
+        setOutputAmount(outamount.toString());
+      } catch (error) {
+        console.log(" Error in calculating amount", error);
+        toast.error("Error in calculating the amount");
+      }
+    },
+    [inputToken, selectedToken, slippage]
+  );
+
+  const fetchAndSetAccountBalance = useCallback(async () => {
     try {
-      const {outamount,
-        minimumRequired,
-        fee,
-        routes,
-        priceImpactPct} = await fetchQuote(inputToken, selectedToken, amount, slippage);
-
-      setOutputAmount(outamount.toString());
-    } catch (error) {
-      console.log(" Error in calculating amount", error);
-      toast.error('Error in calculating the amount');
-    }
-  }, [inputToken, selectedToken, slippage]);
-
-  const fetchAndSetAccountBalance = useCallback(async() => {
-    try {
-      if (publicKey) {
+      if (wallet.publicKey) {
         const tokenInfo = await fetchTokenInfo();
         setInputToken(tokenInfo);
         if (tokenInfo) {
-          await getAccountBalance(publicKey, connection, tokenInfo);
+          await getAccountBalance(wallet.publicKey, connection, tokenInfo);
         }
       }
     } catch (error) {
-      console.error('Error fetching account balance:', error);
+      console.error("Error fetching account balance:", error);
     }
-  },[connection, publicKey])
+  }, [connection, wallet.publicKey]);
+
+  const handleSwap = async () => {
+    if (!inputToken || !selectedToken) {
+      return;
+    }
+    await swapTransaction(
+      inputToken,
+      selectedToken,
+      outputAmount,
+      slippage,
+      connection,
+      wallet
+    );
+  };
 
   useEffect(() => {
     getTokens();
@@ -91,8 +110,6 @@ const SwapCard = () => {
       fetchAndSetAccountBalance();
     }
   }, [inputAmount]);
-
-  console.log(" selected token : ", selectedToken);
 
   return (
     <div className="w-full max-w-md p-6 bg-blue-900 rounded-3xl flex flex-col shadow-lg">
@@ -166,14 +183,17 @@ const SwapCard = () => {
           >
             <img
               src={
-                selectedToken?.logoURI ?? "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
+                selectedToken?.logoURI ??
+                "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
               }
               width={24}
               height={24}
               alt="logo"
               className="rounded-full"
             />
-            <h2 className="text-sm font-semibold">{selectedToken?.symbol ?? "USDC"}</h2>
+            <h2 className="text-sm font-semibold">
+              {selectedToken?.symbol ?? "USDC"}
+            </h2>
             <ChevronDown />
           </div>
           <div className="flex justify-end">
@@ -187,7 +207,10 @@ const SwapCard = () => {
           </div>
         </div>
       </div>
-      <button className="w-full bg-blue-400 hover:bg-blue-600 font-semibold py-2 rounded-lg transition duration-300 text-black">
+      <button
+        className="w-full bg-blue-400 hover:bg-blue-600 font-semibold py-2 rounded-lg transition duration-300 text-black"
+        onClick={handleSwap}
+      >
         Swap
       </button>
       {showTokenModal && (

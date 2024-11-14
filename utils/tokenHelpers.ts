@@ -1,5 +1,6 @@
 import { Token } from "@/types/tokens";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { WalletContextState } from "@solana/wallet-adapter-react";
+import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import { toast } from "sonner";
 
 export const getAccountBalance = async (
@@ -18,7 +19,7 @@ export const getAccountBalance = async (
   }
 
   try {
-    const res = await connection.getParsedTokenAccountsByOwner(publicKey, {
+    await connection.getParsedTokenAccountsByOwner(publicKey, {
       mint: new PublicKey(token.address),
     });  
   } catch (error) {
@@ -76,3 +77,34 @@ export const fetchQuote = async (inputToken: Token, selectedToken: Token, amount
     throw error;
   }
 };
+
+export const swapTransaction = async (inputToken: Token, selectedToken: Token, amount: string, slippage: string, connection: Connection, wallet: WalletContextState) => {
+  try {
+
+    const quote = await fetch(
+      `https://quote-api.jup.ag/v6/quote?inputMint=${inputToken?.address}&outputMint=${selectedToken?.address ?? 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'}&amount=${parseInt(amount, 10) * 1000000000}&slippageBps=${slippage}&&platformFeeBps=20`
+    );
+
+    const response = await quote.json();
+
+    const { swapTransaction } = await (
+      await fetch('https://quote-api.jup.ag/v6/swap', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          response,
+          userPublicKey: wallet?.publicKey?.toString(),
+          wrapAndUnwrapSol: true,
+        })
+      })
+    ).json();
+
+    const tx = Transaction.from(Buffer.from(swapTransaction, "base64"));
+
+    await wallet.sendTransaction(tx, connection);
+  } catch (error) {
+    console.log(" Error in confirming the transaction", error);
+  }
+}
