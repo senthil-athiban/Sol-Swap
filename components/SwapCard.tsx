@@ -24,7 +24,7 @@ const SwapCard = () => {
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [slippage, setSlippage] = useState("50");
   const [outputAmount, setOutputAmount] = useState("");
-
+  console.log(" selectedToken : ", selectedToken);
   const { connection } = useConnection();
 
   const wallet = useWallet();
@@ -32,6 +32,8 @@ const SwapCard = () => {
   const getTokens = async () => {
     const res = await fetch("https://tokens.jup.ag/tokens?tags=verified");
     const body = await res.json();
+    const defaultToken = body?.find((item: Token) => item?.address === "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
+    setSelectedToken(defaultToken);
     setTokens(body);
     setFilteredTokens(body);
   };
